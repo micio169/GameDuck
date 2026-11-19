@@ -1,3 +1,0 @@
-#define IDI_APPICON 101
-IDI_APPICON ICON "GameDuck.ico"
-1 24 "GameDuck.exe.manifest"
