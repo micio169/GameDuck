@@ -155,6 +155,6 @@ GameDuck도 우클릭 → **관리자 권한으로 실행**하세요. 관리자 
 
 **Made for gamers who need to hear their team. 🎧**
 
-MIT License · v1.0.0 (2026-11-19)
+MIT License · v1.1.0 (2026-11-19)
 
 </div>
