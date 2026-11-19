@@ -9,7 +9,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://isocpp.org/)
 [![Native](https://img.shields.io/badge/Native-Win32%20%7C%20No%20.NET-111111?style=flat-square)](https://learn.microsoft.com/windows/win32/)
-[![Size](https://img.shields.io/badge/Size-937KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
+[![Size](https://img.shields.io/badge/Size-984KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-v1.0.0-9E6BFF?style=flat-square)](https://github.com/micio169/GameDuck/releases/tag/v1.0.0)
 
