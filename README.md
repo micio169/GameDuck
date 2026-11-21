@@ -9,11 +9,13 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://isocpp.org/)
 [![Native](https://img.shields.io/badge/Native-Win32%20%7C%20No%20.NET-111111?style=flat-square)](https://learn.microsoft.com/windows/win32/)
-[![Size](https://img.shields.io/badge/Size-984KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
+[![Size](https://img.shields.io/badge/Size-989KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.0.0-9E6BFF?style=flat-square)](https://github.com/micio169/GameDuck/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/Version-v1.2.0-9E6BFF?style=flat-square)](https://github.com/micio169/GameDuck/releases/tag/v1.2.0)
+[![Languages](https://img.shields.io/badge/Languages-16-blue?style=flat-square)](#-16개-언어-지원)
+[![Games](https://img.shields.io/badge/Games-36-orange?style=flat-square)](#4️⃣-게임-목록--여러-게임-동시-지원)
 
-[⬇️ GameDuck.exe 다운로드](https://github.com/micio169/GameDuck/releases) · [사용법](#-사용법) · [원리](#-어떻게-작동하나) · [직접 빌드하기](#-직접-빌드하기)
+[⬇️ GameDuck.exe 다운로드](https://github.com/micio169/GameDuck/releases) · [v1.2.0 새 기능](#-v120-새-기능) · [사용법](#-사용법) · [원리](#-어떻게-작동하나) · [직접 빌드하기](#-직접-빌드하기)
 
 </div>
 
@@ -29,6 +31,26 @@
 | **🪶 가볍다** | 네이티브 C++ 단일 exe. 이벤트 방식 훅이라 안 누르면 CPU를 거의 안 씁니다. |
 | **🛡️ 안전하다** | 게임 주입 없음, 게임 메모리 읽기 없음. Windows 오디오 세션 API만 씁니다. |
 
+![GameDuck UI](screenshot.png)
+
+## 🆕 v1.2.0 새 기능
+
+### 🎮 기본 게임 10개 → 36개
+
+원신, 로블록스, 마인크래프트, 로스트아크, 엘든 링, 디아블로 IV, 데스티니 2, 사이버펑크 2077, 팰월드, 마블 라이벌즈, 메이플스토리, 던전앤파이터 등 **26개 게임이 새로 내장**됐습니다. 설치만 하면 바로 목록에 뜹니다.
+
+### 🔍 게임 검색
+
+게임 목록 위에 검색창이 생겼습니다. 게임 이름이나 프로세스명 일부만 입력해도 목록이 바로 좁혀집니다. (`발로`, `cs2`, `minecraft` …)
+
+### 📜 목록 스크롤이 더 이상 안 튀어요
+
+예전에는 2초마다 목록이 새로고침될 때마다 맨 위로 튀었습니다. 이제 **스크롤 위치와 선택 상태가 유지**됩니다. 목록을 내린 채로 둬도 그대로 있고, 체크 상태도 그대로입니다. (검색어를 바꾸면 목록이 처음부터 다시 그려집니다.)
+
+### 🖥️ 창이 커지고 보기 편해졌어요
+
+창이 880×700 → **960×760**으로 커지고, 제목이 더 큼지막해졌고, 게임 목록이 더 넓어졌습니다. 목록은 더블 버퍼로 그려져서 깜빡임도 줄었습니다. 등록된 게임 개수가 목록 옆에 표시됩니다.
+
 ## 🚀 빠른 시작
 
 ```
@@ -39,6 +61,19 @@
 ```
 
 > 설정은 exe 옆 `GameDuck.ini`에 자동 저장됩니다.
+
+## 🌍 16개 언어 지원
+
+하단 **언어** 드롭다운에서 바꾸면 앱이 재시작되면서 새 언어로 적용됩니다. (폰트까지 언어에 맞게 바뀝니다)
+
+| | | | |
+|---|---|---|---|
+| 🇰🇷 한국어 | 🇺🇸 English | 🇯🇵 日本語 | 🇨🇳 简体中文 |
+| 🇹🇼 繁體中文 | 🇪🇸 Español | 🇫🇷 Français | 🇩🇪 Deutsch |
+| 🇧🇷 Português | 🇷🇺 Русский | 🇹🇷 Türkçe | 🇻🇳 Tiếng Việt |
+| 🇮🇩 Bahasa Indonesia | 🇹🇭 ไทย | 🇸🇦 العربية | 🇮🇳 हिन्दी |
+
+UI 라벨, 버튼, 상태 메시지까지 전부 번역됩니다. 언어 선택은 `GameDuck.ini`의 `Lang` 항목에 저장됩니다.
 
 ## 🎮 사용법
 
@@ -70,15 +105,46 @@
 
 ### 4️⃣ 게임 목록 — 여러 게임 동시 지원
 
-체크한 게임만 덕킹합니다. 기본 10개가 등록되어 있습니다.
+체크한 게임만 덕킹합니다. 기본 **36개**가 등록되어 있습니다. 검색창에서 이름이나 프로세스명으로 바로 찾을 수 있습니다.
+
+**FPS / TPS**
 
 | 게임 | 프로세스 | 게임 | 프로세스 |
 |---|---|---|---|
-| Valorant | `VALORANT-Win64-Shipping.exe` | Apex Legends | `r5apex.exe` |
-| League of Legends | `League of Legends.exe` | Fortnite | `FortniteClient-Win64-Shipping.exe` |
-| CS2 | `cs2.exe` | Eternal Return | `EternalReturn.exe` |
-| PUBG | `TslGame.exe` | Escape from Tarkov | `EscapeFromTarkov.exe` |
-| Overwatch 2 | `Overwatch.exe` | FC Online | `FO4Client.exe` |
+| Valorant | `VALORANT-Win64-Shipping.exe` | Rainbow Six Siege | `RainbowSix.exe` |
+| CS2 | `cs2.exe` | Hell Let Loose | `HellLetLoose-Win64-Shipping.exe` |
+| Overwatch 2 | `Overwatch.exe` | Call of Duty: Black Ops 6 | `cod.exe` |
+| PUBG | `TslGame.exe` | Destiny 2 | `destiny2.exe` |
+| Apex Legends | `r5apex.exe` | | |
+
+**MOBA / 배틀로얄 / 카드**
+
+| 게임 | 프로세스 | 게임 | 프로세스 |
+|---|---|---|---|
+| League of Legends | `League of Legends.exe` | Marvel Rivals | `MarvelRivals-Win64-Shipping.exe` |
+| Dota 2 | `dota2.exe` | Deadlock | `deadlock.exe` |
+| Fortnite | `FortniteClient-Win64-Shipping.exe` | Eternal Return | `EternalReturn.exe` |
+
+**RPG / 어드벤처 / 액션**
+
+| 게임 | 프로세스 | 게임 | 프로세스 |
+|---|---|---|---|
+| Genshin Impact | `GenshinImpact.exe` | Palworld | `Palworld-Win64-Shipping.exe` |
+| Genshin Impact (CN) | `YuanShen.exe` | Cyberpunk 2077 | `Cyberpunk2077.exe` |
+| Honkai: Star Rail | `StarRail.exe` | Elden Ring | `eldenring.exe` |
+| Zenless Zone Zero | `ZenlessZoneZero.exe` | Dark Souls III | `DarkSoulsIII.exe` |
+| Diablo IV | `Diablo IV.exe` | Hogwarts Legacy | `HogwartsLegacy.exe` |
+| Lost Ark | `LOSTARK.exe` | Path of Exile | `pathofexile_x64.exe` |
+| Escape from Tarkov | `EscapeFromTarkov.exe` | | |
+
+**스포츠 / 격투 / 샌드박스 / 기타**
+
+| 게임 | 프로세스 | 게임 | 프로세스 |
+|---|---|---|---|
+| FC Online | `FO4Client.exe` | Roblox | `RobloxPlayerBeta.exe` |
+| EA Sports FC 24 | `FC24.exe` | Minecraft (Bedrock) | `Minecraft.Windows.exe` |
+| Tekken 8 | `Polaris-Win64-Shipping.exe` | Minecraft (Java) | `javaw.exe` |
+| Dungeon & Fighter | `DNF.exe` | MapleStory | `MapleStory.exe` |
 
 exe명을 입력해 `[게임 추가]`로 어떤 게임이든 추가할 수 있습니다. `목록 외 앱도 자동 덕킹`을 켜면 목록에 없는 실행 중 앱 볼륨도 낮아집니다.
 
@@ -109,13 +175,14 @@ Windows에서 `build.bat`을 실행하거나 (mingw-w64 필요):
 
 ```bat
 x86_64-w64-mingw32-windres GameDuck.rc -O coff -o GameDuck.res
-x86_64-w64-mingw32-g++ -std=c++17 -O2 -municode -mwindows -finput-charset=UTF-8 -fexec-charset=UTF-8 -fwide-exec-charset=UTF-16LE -static-libgcc -static-libstdc++ main.cpp GameDuck.res -o GameDuck.exe -lcomctl32 -lgdi32 -luser32 -lshell32 -lole32 -luuid -lpsapi -lshlwapi
+x86_64-w64-mingw32-g++ -std=c++17 -O2 -municode -mwindows -finput-charset=UTF-8 -fexec-charset=UTF-8 -fwide-exec-charset=UTF-16LE -static-libgcc -static-libstdc++ main.cpp GameDuck.res -o GameDuck.exe -lcomctl32 -lgdi32 -luser32 -lshell32 -lole32 -luuid -lpsapi -lshlwapi -luxtheme
 ```
 
 | 파일 | 설명 |
 |---|---|
-| `main.cpp` | 전체 소스 (단일 파일) |
-| `GameDuck.ico` / `GameDuck.rc` / `GameDuck.exe.manifest` | 아이콘 · 리소스 · 매니페스트 |
+| `main.cpp` | 전체 소스 (v1.2.0) |
+| `lang.h` | 16개 언어 UI 문자열 테이블 (55개 항목 × 16개 언어) |
+| `GameDuck.ico` / `GameDuck.rc` / `GameDuck.exe.manifest` | 아이콘 · 리소스 · 매니페스트 (버전 1.2.0.0) |
 | `build.bat` | Windows 빌드 스크립트 |
 | `GameDuck.ini` | 실행 후 자동 생성되는 설정 파일 (exe 옆) |
 
@@ -149,12 +216,19 @@ GameDuck도 우클릭 → **관리자 권한으로 실행**하세요. 관리자 
 
 </details>
 
+<details>
+<summary><b>게임 목록에서 찾고 싶은 게임이 안 보여요</b></summary>
+
+검색창에 입력한 글자가 필터로 적용 중일 수 있습니다. 검색창을 비우면 전체 36개가 다시 보입니다. 목록에 없는 게임은 exe명을 입력해 `[게임 추가]`로 등록하세요.
+
+</details>
+
 ---
 
 <div align="center">
 
 **Made for gamers who need to hear their team. 🎧**
 
-MIT License · v1.1.0 (2026-11-19)
+MIT License · v1.2.0 (2026-11-21)
 
 </div>

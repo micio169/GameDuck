@@ -1,4 +1,12 @@
-// GameDuck v1 - 게임 볼륨 즉시 낮추기
+// GameDuck v1.2.0 - 게임 볼륨 즉시 낮추기
+// v1.2.0 변경사항:
+//   - UI 개선: 여백 정리, 창 크기 최적화 (960x760)
+//   - 게임 목록 스크롤 버그 수정 (RefreshGameList가 스크롤 위치를 보존)
+//   - 더 많은 게임 추가 (Minecraft, Roblox, Genshin Impact 등 26개, 총 36개)
+//   - 게임 검색 필터, 등록 게임 개수 표시
+//   - v1.2.0 릴리스 전 수정: 프로세스명 오류 4건 정정
+//     (FIFA24.exe->FC24.exe, Hogwarts Legacy.exe->HogwartsLegacy.exe,
+//      TEKKEN 8.exe->Polaris-Win64-Shipping.exe, T6SP.exe->cod.exe)
 // 동작 원리: Windows Core Audio 세션 API로 게임 프로세스별 볼륨만 조절합니다.
 // 게임에 DLL을 주입하지 않고, 게임 메모리를 읽지 않으며, 시스템 전체 볼륨은 건드리지 않습니다.
 // 트리거 키/마우스 버튼은 전역 로우레벨 훅으로 "듣기만" 합니다. 입력을 가로채지 않으므로
@@ -23,6 +31,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <algorithm>
 #include "lang.h"
 
@@ -34,6 +43,7 @@
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "uxtheme.lib")
 
 static std::wstring U8(const char* s){
     if(!s) return L"";
@@ -97,6 +107,9 @@ static HWND g_chkStartup=NULL, g_chkTray=NULL, g_chkAllGames=NULL;
 static int g_lang=0;
 static const LangStrings& L(){ return LANGS[g_lang]; }
 static HWND g_langCombo=NULL, g_langLabel=NULL, g_grp1=NULL, g_grp2=NULL, g_grp3=NULL, g_titleLabel=NULL, g_subLabel=NULL;
+// v1.2.0: 게임 검색 필터
+static HWND g_gameSearchBox=NULL;
+static std::wstring g_gameFilter;
 
 #define WM_APP_DUCK_ON  (WM_APP+1)
 #define WM_APP_DUCK_OFF (WM_APP+2)
@@ -110,9 +123,11 @@ static HWND g_langCombo=NULL, g_langLabel=NULL, g_grp1=NULL, g_grp2=NULL, g_grp3
 #define TIMER_CAPTURE 3
 
 // ---------- 기본 게임 목록 (프로세스명 기준, 여러 개 동시 지원) ----------
+// v1.2.0: 36개로 확대 (기본 10개 + 신규 26개)
 static void SetDefaultGames(){
     g_games.clear();
     auto add=[&](const char* exe, const char* name){ Game g; g.exe=U8(exe); g.name=U8(name); g.enabled=true; g_games.push_back(g); };
+    // FPS / TPS
     add("VALORANT-Win64-Shipping.exe","Valorant");
     add("League of Legends.exe","League of Legends");
     add("cs2.exe","CS2");
@@ -123,6 +138,33 @@ static void SetDefaultGames(){
     add("EternalReturn.exe","Eternal Return");
     add("EscapeFromTarkov.exe","Escape from Tarkov");
     add("FO4Client.exe","FC Online");
+    // v1.2.0 신규 추가
+    add("Minecraft.Windows.exe","Minecraft (Bedrock)");
+    add("javaw.exe","Minecraft (Java)");
+    add("RobloxPlayerBeta.exe","Roblox");
+    add("GenshinImpact.exe","Genshin Impact");
+    add("YuanShen.exe","Genshin Impact (CN)");
+    add("StarRail.exe","Honkai: Star Rail");
+    add("ZenlessZoneZero.exe","Zenless Zone Zero");
+    add("LOSTARK.exe","Lost Ark");
+    add("Diablo IV.exe","Diablo IV");
+    add("destiny2.exe","Destiny 2");
+    add("RainbowSix.exe","Rainbow Six Siege");
+    add("HellLetLoose-Win64-Shipping.exe","Hell Let Loose");
+    add("eldenring.exe","Elden Ring");
+    add("DarkSoulsIII.exe","Dark Souls III");
+    add("Palworld-Win64-Shipping.exe","Palworld");
+    add("Cyberpunk2077.exe","Cyberpunk 2077");
+    add("HogwartsLegacy.exe","Hogwarts Legacy");
+    add("Polaris-Win64-Shipping.exe","Tekken 8");
+    add("FC24.exe","EA Sports FC 24");
+    add("dota2.exe","Dota 2");
+    add("deadlock.exe","Deadlock");
+    add("pathofexile_x64.exe","Path of Exile");
+    add("cod.exe","Call of Duty: Black Ops 6");
+    add("MarvelRivals-Win64-Shipping.exe","Marvel Rivals");
+    add("DNF.exe","Dungeon & Fighter");
+    add("MapleStory.exe","MapleStory");
 }
 static void SetDefaultBindings(){
     g_bindings.clear();
@@ -225,8 +267,6 @@ static int CurrentMods(){
     return m;
 }
 static bool ModsMatch(int want){
-    // 바인딩에 없는 수식키는 눌려 있어도 되지만, 있는 수식키는 반드시 눌려 있어야 함.
-    // 단, 바인딩 자체가 Ctrl/Alt/Shift 단독 키인 경우는 제외 (vk가 수식키면 mods 무시)
     return (CurrentMods() & want) == want;
 }
 
@@ -248,14 +288,12 @@ static bool IsTargetExe(const std::wstring& exe){
     if(exe.empty()) return false;
     std::wstring low = ToLower(exe);
     if(g_allGames){
-        // 시스템 소리/브라우저 제외하고, 실행 중인 게임 목록에 있거나 게임으로 보이는 프로세스는 대상
         if(low==L"system sounds"||low==L"audiodg.exe") return false;
         return true;
     }
     for(auto& g: g_games) if(g.enabled && ToLower(g.exe)==low) return true;
     return false;
 }
-// 세션을 열거해 콜백 호출. 덕킹/복원/상태 확인 모두 이 함수 하나로.
 template<typename F>
 static void ForEachTargetSession(F&& fn){
     IMMDeviceEnumerator* pEnum=NULL;
@@ -294,7 +332,6 @@ static void ForEachTargetSession(F&& fn){
     pMgr->Release(); pDev->Release(); pEnum->Release();
 }
 static void ApplyVolumeForDuckState(float progress){
-    // progress 0=원래 볼륨, 1=덕킹 볼륨. 페이드 중에는 이 값으로 보간.
     float target = g_duckLevel/100.0f;
     ForEachTargetSession([&](DWORD pid, const std::wstring& exe, ISimpleAudioVolume* pVol){
         auto it = g_origVol.find(pid);
@@ -312,7 +349,6 @@ static void ApplyVolumeForDuckState(float progress){
 }
 static void RestoreAllVolumes(){
     float target = 0; (void)target;
-    // 덕킹했던 pid만 원래대로. 세션이 사라졌으면 건너뜀.
     ForEachTargetSession([&](DWORD pid, const std::wstring&, ISimpleAudioVolume* pVol){
         auto it = g_origVol.find(pid);
         if(it!=g_origVol.end()) pVol->SetMasterVolume(it->second, NULL);
@@ -331,11 +367,8 @@ static void StartDuck(bool on){
     } else {
         g_fadeStartMs = GetTickCount();
         g_fadeProgress = on ? 0.0f : 1.0f;
-        // 페이드 시작점: 켤 때는 현재 볼륨이 원래 볼륨, 끌 때는 덕킹 볼륨에서 시작
-        // (간단히 0->1 / 1->0으로 보간, 시작 볼륨은 ApplyVolumeForDuckState가 orig 기준으로 계산)
         g_fadeActive=true;
         SetTimer(g_hwnd, TIMER_FADE, 15, NULL);
-        // 첫 프레임 즉시 적용해 지연 체감을 없앰
         ApplyVolumeForDuckState(g_fadeProgress);
     }
     if(g_volBar){
@@ -353,7 +386,6 @@ static void SetStatus(const std::wstring& s){
 static bool BindingMatchesKey(const Binding& b, int vk){
     if(b.type!=0) return false;
     if(b.vk!=vk) return false;
-    // 수식키 단독 바인딩이면 mods 검사 생략
     if(vk==VK_CONTROL||vk==VK_MENU||vk==VK_SHIFT||vk==VK_LWIN||vk==VK_RWIN||vk==VK_LCONTROL||vk==VK_RCONTROL||vk==VK_LMENU||vk==VK_RMENU||vk==VK_LSHIFT||vk==VK_RSHIFT) return true;
     return ModsMatch(b.mods);
 }
@@ -398,7 +430,6 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
                 if(g_captureLabel) SetWindowTextW(g_captureLabel, U8(L().msgCancelled).c_str());
             } else {
                 Binding b; b.type=0; b.vk=vk; b.mouse=0;
-                // 수식키 단독이면 mods 0, 아니면 현재 눌린 수식키 기록 (단, 방금 누른 키가 수식키면 제외)
                 int mods=CurrentMods();
                 if(vk==VK_CONTROL||vk==VK_LCONTROL||vk==VK_RCONTROL) mods&=~1;
                 if(vk==VK_MENU||vk==VK_LMENU||vk==VK_RMENU) mods&=~2;
@@ -407,14 +438,12 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
                 g_bindings.push_back(b);
                 g_capturing=false; KillTimer(g_hwnd, TIMER_CAPTURE);
                 SaveSettings();
-                // 리스트 갱신은 메인 스레드에서
                 PostMessageW(g_hwnd, WM_APP+20, 0, 0);
                 SetStatus(U8(L().msgAdded) + BindingLabel(b));
             }
-            return 1; // 캡처한 그 한 번의 입력만 게임으로 전달하지 않음
+            return 1;
         }
         if(!g_capturing && g_enabled){
-            // 오토리피트 무시: 이미 눌려 있으면 다시 트리거하지 않음 (전역 맵으로 down/up 공유)
             extern std::map<int,bool> g_keyDownMap;
             if(down){
                 if(!g_keyDownMap[(int)k->vkCode]){
@@ -497,34 +526,101 @@ static double CurrentMemoryMB(){
     return 0;
 }
 
-// ---------- 게임 목록 갱신 ----------
+// ---------- v1.2.0: 게임 목록 갱신 (스크롤 위치 보존) ----------
 static void RefreshGameList(){
     if(!g_gameList) return;
-    ListView_DeleteAllItems(g_gameList);
+
+    // ★ v1.2.0 핵심 수정: 스크롤 위치를 보존한다
+    // 먼저 현재 스크롤 위치와 선택 상태를 저장
+    int topIndex = ListView_GetTopIndex(g_gameList);
+    int selIndex = ListView_GetNextItem(g_gameList, -1, LVNI_SELECTED);
+
     // 실행 중 프로세스 집합 (상태 표시용)
     std::map<std::wstring,bool> running;
     ForEachTargetSession([&](DWORD, const std::wstring& exe, ISimpleAudioVolume* pVol){
         float v=0; pVol->GetMasterVolume(&v);
         running[ToLower(exe)]=true;
     });
-    // 오디오 세션이 없어도 프로세스 자체가 떠 있으면 실행 중으로 표시
     HANDLE snap=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
     if(snap!=INVALID_HANDLE_VALUE){
         PROCESSENTRY32W pe; pe.dwSize=sizeof(pe);
         if(Process32FirstW(snap,&pe)){ do{ running[ToLower(pe.szExeFile)]=true; }while(Process32NextW(snap,&pe)); }
         CloseHandle(snap);
     }
+
+    // 필터링된 게임 목록 구성
+    std::vector<int> filteredIndices;
     for(size_t i=0;i<g_games.size();i++){
-        LVITEMW item={0}; item.mask=LVIF_TEXT; item.iItem=(int)i; item.iSubItem=0; item.pszText=(LPWSTR)g_games[i].name.c_str();
-        int idx=ListView_InsertItem(g_gameList,&item);
-        ListView_SetItemText(g_gameList, idx, 1, (LPWSTR)g_games[i].exe.c_str());
-        bool run = running.count(ToLower(g_games[i].exe))>0;
+        if(!g_gameFilter.empty()){
+            std::wstring nameLow = ToLower(g_games[i].name);
+            std::wstring exeLow = ToLower(g_games[i].exe);
+            std::wstring filterLow = ToLower(g_gameFilter);
+            if(nameLow.find(filterLow)==std::wstring::npos && exeLow.find(filterLow)==std::wstring::npos)
+                continue;
+        }
+        filteredIndices.push_back((int)i);
+    }
+
+    int currentCount = ListView_GetItemCount(g_gameList);
+    int targetCount = (int)filteredIndices.size();
+
+    // 아이템 수를 맞춘다 (삭제/추가를 최소화)
+    // 먼저 기존 아이템들의 체크 상태 변경 알림을 무시하기 위해 직접 텍스트만 갱신
+    // WM_SETREDRAW로 갱신 중 깜빡임 방지
+    SendMessageW(g_gameList, WM_SETREDRAW, FALSE, 0);
+
+    // 초과 아이템 삭제
+    while(currentCount > targetCount){
+        ListView_DeleteItem(g_gameList, currentCount-1);
+        currentCount--;
+    }
+
+    for(int fi=0; fi<targetCount; fi++){
+        int gi = filteredIndices[fi];
+        bool run = running.count(ToLower(g_games[gi].exe))>0;
         std::wstring st = run ? U8(L().runState) : U8(L().notRun);
         if(run && g_ducked) st += U8(" · ") + U8(L().duckingShort);
-        ListView_SetItemText(g_gameList, idx, 2, (LPWSTR)st.c_str());
-        ListView_SetCheckState(g_gameList, idx, g_games[i].enabled?TRUE:FALSE);
+
+        if(fi < currentCount){
+            // 기존 아이템 업데이트 (삽입/삭제 없이 텍스트만 변경)
+            ListView_SetItemText(g_gameList, fi, 0, (LPWSTR)g_games[gi].name.c_str());
+            ListView_SetItemText(g_gameList, fi, 1, (LPWSTR)g_games[gi].exe.c_str());
+            ListView_SetItemText(g_gameList, fi, 2, (LPWSTR)st.c_str());
+            // 체크 상태도 변경이 필요한 경우에만 설정
+            BOOL curCheck = ListView_GetCheckState(g_gameList, fi);
+            BOOL wantCheck = g_games[gi].enabled ? TRUE : FALSE;
+            if(curCheck != wantCheck){
+                ListView_SetCheckState(g_gameList, fi, wantCheck);
+            }
+            // lParam에 원래 인덱스 저장 (체크 변경 처리용)
+            LVITEMW lvi={0}; lvi.mask=LVIF_PARAM; lvi.iItem=fi; lvi.lParam=(LPARAM)gi;
+            ListView_SetItem(g_gameList, &lvi);
+        } else {
+            // 새 아이템 추가
+            LVITEMW item={0}; item.mask=LVIF_TEXT|LVIF_PARAM; item.iItem=fi; item.iSubItem=0;
+            item.pszText=(LPWSTR)g_games[gi].name.c_str();
+            item.lParam=(LPARAM)gi;
+            int idx=ListView_InsertItem(g_gameList,&item);
+            ListView_SetItemText(g_gameList, idx, 1, (LPWSTR)g_games[gi].exe.c_str());
+            ListView_SetItemText(g_gameList, idx, 2, (LPWSTR)st.c_str());
+            ListView_SetCheckState(g_gameList, idx, g_games[gi].enabled?TRUE:FALSE);
+        }
     }
+
+    SendMessageW(g_gameList, WM_SETREDRAW, TRUE, 0);
+
+    // ★ 스크롤 위치 복원
+    if(topIndex > 0 && topIndex < targetCount){
+        ListView_EnsureVisible(g_gameList, targetCount-1, FALSE);
+        ListView_EnsureVisible(g_gameList, topIndex, FALSE);
+    }
+    if(selIndex >= 0 && selIndex < targetCount){
+        ListView_SetItemState(g_gameList, selIndex, LVIS_SELECTED|LVIS_FOCUSED, LVIS_SELECTED|LVIS_FOCUSED);
+    }
+
+    InvalidateRect(g_gameList, NULL, TRUE);
 }
+
 static void RefreshBindingList(){
     if(!g_bindList) return;
     SendMessageW(g_bindList, LB_RESETCONTENT, 0, 0);
@@ -551,7 +647,6 @@ static void RefreshAllUI(){
     wchar_t buf[128];
     swprintf(buf,128,U8(L().duckFmt).c_str(), g_duckLevel, g_duckLevel);
     if(g_duckLabel) SetWindowTextW(g_duckLabel, buf);
-    // mingw wide swprintf에서는 %s가 narrow 문자열을 뜻하므로 wide 문자열은 %ls를 써야 함
     swprintf(buf,128,U8(L().fadeFmt).c_str(), g_fadeMs, g_fadeMs==0?U8(L().fadeInstant).c_str():U8(L().fadeSmooth).c_str());
     if(g_fadeLabel) SetWindowTextW(g_fadeLabel, buf);
     if(g_volBar) SendMessageW(g_volBar, PBM_SETPOS, (WPARAM)(g_ducked?g_duckLevel:100), 0);
@@ -583,77 +678,98 @@ static HWND MakeCheck(HWND parent, int x, int y, int w, int ht, const wchar_t* t
 }
 enum { ID_ADD_BIND=101, ID_DEL_BIND, ID_CLEAR_BIND, ID_MODE_HOLD, ID_MODE_TOGGLE,
        ID_TEST_DUCK, ID_RESTORE_VOL, ID_ADD_GAME, ID_DEL_GAME, ID_REFRESH_GAME,
-       ID_TRAY_BTN, ID_EXIT_BTN, ID_CHK_ENABLE, ID_CHK_STARTUP, ID_CHK_TRAY, ID_CHK_ALLGAMES, ID_LANG_COMBO };
+       ID_TRAY_BTN, ID_EXIT_BTN, ID_CHK_ENABLE, ID_CHK_STARTUP, ID_CHK_TRAY, ID_CHK_ALLGAMES, ID_LANG_COMBO,
+       ID_GAME_SEARCH };
+
 static void CreateUI(HWND hwnd){
-    g_fontTitle = MakeFont(16, true);
+    g_fontTitle = MakeFont(18, true);
     g_fontBold = MakeFont(10, true);
     g_fontNormal = MakeFont(10, false);
     g_fontSmall = MakeFont(9, false);
     HINSTANCE hi = GetModuleHandleW(NULL);
-    // 헤더
-    g_titleLabel = MakeLabel(hwnd, 20, 14, 300, 28, U8("GameDuck").c_str(), g_fontTitle);
-    g_subLabel = MakeLabel(hwnd, 20, 44, 590, 20, U8(L().subtitle).c_str(), g_fontSmall);
-    g_chkEnable = MakeCheck(hwnd, 620, 16, 180, 26, U8(L().enable).c_str(), ID_CHK_ENABLE);
-    g_statusLabel = MakeLabel(hwnd, 620, 44, 220, 20, U8(L().ready).c_str(), g_fontBold);
-    // 1. 트리거
-    g_grp1 = CreateWindowW(L"BUTTON", U8(L().grp1).c_str(), WS_CHILD|WS_VISIBLE|BS_GROUPBOX, 16, 72, 848, 168, hwnd, NULL, hi, NULL);
-    MakeLabel(hwnd, 32, 96, 300, 20, U8(L().bindLabel).c_str(), g_fontBold);
-    g_bindList = CreateWindowW(L"LISTBOX", NULL, WS_CHILD|WS_VISIBLE|WS_BORDER|LBS_NOTIFY|WS_VSCROLL, 32, 118, 300, 104, hwnd, NULL, hi, NULL);
+
+    // ── 헤더 ──
+    g_titleLabel = MakeLabel(hwnd, 24, 14, 400, 30, U8("🦆 GameDuck v1.2.0").c_str(), g_fontTitle);
+    g_subLabel = MakeLabel(hwnd, 24, 46, 640, 20, U8(L().subtitle).c_str(), g_fontSmall);
+    g_chkEnable = MakeCheck(hwnd, 680, 16, 200, 26, U8(L().enable).c_str(), ID_CHK_ENABLE);
+    SendMessageW(g_chkEnable, WM_SETFONT, (WPARAM)g_fontBold, TRUE);
+    g_statusLabel = MakeLabel(hwnd, 680, 44, 240, 20, U8(L().ready).c_str(), g_fontBold);
+
+    // ── 1. 트리거 ──
+    g_grp1 = CreateWindowW(L"BUTTON", U8(L().grp1).c_str(), WS_CHILD|WS_VISIBLE|BS_GROUPBOX, 16, 74, 920, 164, hwnd, NULL, hi, NULL);
+    MakeLabel(hwnd, 32, 98, 300, 20, U8(L().bindLabel).c_str(), g_fontBold);
+    g_bindList = CreateWindowW(L"LISTBOX", NULL, WS_CHILD|WS_VISIBLE|WS_BORDER|LBS_NOTIFY|WS_VSCROLL, 32, 120, 320, 100, hwnd, NULL, hi, NULL);
     SendMessageW(g_bindList, WM_SETFONT, (WPARAM)g_fontNormal, TRUE);
-    MakeButton(hwnd, 344, 118, 150, 30, U8(L().addBind).c_str(), ID_ADD_BIND);
-    MakeButton(hwnd, 344, 152, 150, 30, U8(L().delBind).c_str(), ID_DEL_BIND);
-    MakeButton(hwnd, 344, 186, 150, 30, U8(L().clearBind).c_str(), ID_CLEAR_BIND);
-    g_captureLabel = MakeLabel(hwnd, 510, 118, 330, 44, U8(L().captureHint).c_str(), g_fontSmall);
-    g_modeHold = MakeButton(hwnd, 510, 168, 165, 30, U8(L().holdOn).c_str(), ID_MODE_HOLD);
-    g_modeToggle = MakeButton(hwnd, 674, 168, 165, 30, U8(L().toggleOff).c_str(), ID_MODE_TOGGLE);
-    MakeLabel(hwnd, 510, 202, 330, 20, U8(L().noIntercept).c_str(), g_fontSmall);
-    // 2. 볼륨
-    g_grp2 = CreateWindowW(L"BUTTON", U8(L().grp2).c_str(), WS_CHILD|WS_VISIBLE|BS_GROUPBOX, 16, 250, 848, 128, hwnd, NULL, hi, NULL);
-    g_duckLabel = MakeLabel(hwnd, 32, 274, 340, 20, U8("").c_str(), g_fontBold);
-    g_duckSlider = CreateWindowW(TRACKBAR_CLASSW, NULL, WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS, 32, 296, 320, 32, hwnd, NULL, hi, NULL);
+    MakeButton(hwnd, 368, 120, 155, 28, U8(L().addBind).c_str(), ID_ADD_BIND);
+    MakeButton(hwnd, 368, 152, 155, 28, U8(L().delBind).c_str(), ID_DEL_BIND);
+    MakeButton(hwnd, 368, 184, 155, 28, U8(L().clearBind).c_str(), ID_CLEAR_BIND);
+    g_captureLabel = MakeLabel(hwnd, 540, 120, 380, 40, U8(L().captureHint).c_str(), g_fontSmall);
+    g_modeHold = MakeButton(hwnd, 540, 166, 180, 28, U8(L().holdOn).c_str(), ID_MODE_HOLD);
+    g_modeToggle = MakeButton(hwnd, 726, 166, 180, 28, U8(L().toggleOff).c_str(), ID_MODE_TOGGLE);
+    MakeLabel(hwnd, 540, 200, 380, 20, U8(L().noIntercept).c_str(), g_fontSmall);
+
+    // ── 2. 볼륨 ──
+    g_grp2 = CreateWindowW(L"BUTTON", U8(L().grp2).c_str(), WS_CHILD|WS_VISIBLE|BS_GROUPBOX, 16, 248, 920, 128, hwnd, NULL, hi, NULL);
+    g_duckLabel = MakeLabel(hwnd, 32, 272, 340, 20, U8("").c_str(), g_fontBold);
+    g_duckSlider = CreateWindowW(TRACKBAR_CLASSW, NULL, WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS, 32, 294, 320, 32, hwnd, NULL, hi, NULL);
     SendMessageW(g_duckSlider, TBM_SETRANGE, TRUE, MAKELONG(0,50));
     SendMessageW(g_duckSlider, TBM_SETPAGESIZE, 0, 5);
-    g_fadeLabel = MakeLabel(hwnd, 380, 274, 200, 20, U8("").c_str(), g_fontBold);
-    g_fadeSlider = CreateWindowW(TRACKBAR_CLASSW, NULL, WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS, 380, 296, 200, 32, hwnd, NULL, hi, NULL);
+    g_fadeLabel = MakeLabel(hwnd, 380, 272, 200, 20, U8("").c_str(), g_fontBold);
+    g_fadeSlider = CreateWindowW(TRACKBAR_CLASSW, NULL, WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS, 380, 294, 200, 32, hwnd, NULL, hi, NULL);
     SendMessageW(g_fadeSlider, TBM_SETRANGE, TRUE, MAKELONG(0,300));
     SendMessageW(g_fadeSlider, TBM_SETPAGESIZE, 0, 50);
-    MakeButton(hwnd, 610, 274, 110, 30, U8(L().testDuck).c_str(), ID_TEST_DUCK);
-    MakeButton(hwnd, 728, 274, 110, 30, U8(L().restoreVol).c_str(), ID_RESTORE_VOL);
-    g_volLabel = MakeLabel(hwnd, 610, 310, 228, 20, U8("").c_str(), g_fontNormal);
-    g_volBar = CreateWindowW(PROGRESS_CLASSW, NULL, WS_CHILD|WS_VISIBLE|PBS_SMOOTH, 610, 332, 228, 18, hwnd, NULL, hi, NULL);
+    MakeButton(hwnd, 620, 272, 130, 28, U8(L().testDuck).c_str(), ID_TEST_DUCK);
+    MakeButton(hwnd, 760, 272, 130, 28, U8(L().restoreVol).c_str(), ID_RESTORE_VOL);
+    g_volLabel = MakeLabel(hwnd, 620, 308, 268, 20, U8("").c_str(), g_fontNormal);
+    g_volBar = CreateWindowW(PROGRESS_CLASSW, NULL, WS_CHILD|WS_VISIBLE|PBS_SMOOTH, 620, 332, 268, 18, hwnd, NULL, hi, NULL);
     SendMessageW(g_volBar, PBM_SETRANGE, 0, MAKELONG(0,100));
     SendMessageW(g_volBar, PBM_SETPOS, 100, 0);
-    MakeLabel(hwnd, 32, 336, 560, 20, U8(L().duckNote).c_str(), g_fontSmall);
-    // 3. 게임 목록
-    g_grp3 = CreateWindowW(L"BUTTON", U8(L().grp3).c_str(), WS_CHILD|WS_VISIBLE|BS_GROUPBOX, 16, 388, 848, 196, hwnd, NULL, hi, NULL);
-    g_gameList = CreateWindowW(WC_LISTVIEWW, NULL, WS_CHILD|WS_VISIBLE|WS_BORDER|LVS_REPORT|LVS_SINGLESEL, 32, 412, 560, 128, hwnd, NULL, hi, NULL);
+    MakeLabel(hwnd, 32, 338, 560, 20, U8(L().duckNote).c_str(), g_fontSmall);
+
+    // ── 3. 게임 목록 (확대) ──
+    g_grp3 = CreateWindowW(L"BUTTON", U8(L().grp3).c_str(), WS_CHILD|WS_VISIBLE|BS_GROUPBOX, 16, 386, 920, 240, hwnd, NULL, hi, NULL);
+
+    // 게임 검색 필터 (v1.2.0 신규)
+    std::wstring searchHint = (g_lang==0) ? U8("🔍 게임 검색...") : U8("🔍 Search games...");
+    g_gameSearchBox = CreateWindowW(L"EDIT", NULL, WS_CHILD|WS_VISIBLE|WS_BORDER|ES_AUTOHSCROLL, 32, 410, 300, 24, hwnd, (HMENU)(INT_PTR)ID_GAME_SEARCH, hi, NULL);
+    SendMessageW(g_gameSearchBox, WM_SETFONT, (WPARAM)g_fontNormal, TRUE);
+    SendMessageW(g_gameSearchBox, EM_SETCUEBANNER, TRUE, (LPARAM)searchHint.c_str());
+
+    g_gameList = CreateWindowW(WC_LISTVIEWW, NULL, WS_CHILD|WS_VISIBLE|WS_BORDER|LVS_REPORT|LVS_SINGLESEL, 32, 440, 620, 170, hwnd, NULL, hi, NULL);
     SendMessageW(g_gameList, WM_SETFONT, (WPARAM)g_fontNormal, TRUE);
-    ListView_SetExtendedListViewStyle(g_gameList, LVS_EX_FULLROWSELECT|LVS_EX_CHECKBOXES|LVS_EX_GRIDLINES);
+    ListView_SetExtendedListViewStyle(g_gameList, LVS_EX_FULLROWSELECT|LVS_EX_CHECKBOXES|LVS_EX_GRIDLINES|LVS_EX_DOUBLEBUFFER);
     LVCOLUMNW col={0}; col.mask=LVCF_TEXT|LVCF_WIDTH;
     static std::wstring colGame = U8(L().colGame), colProc = U8(L().colProc), colState = U8(L().colState);
-    col.pszText=(LPWSTR)colGame.c_str(); col.cx=170; ListView_InsertColumn(g_gameList,0,&col);
-    col.pszText=(LPWSTR)colProc.c_str(); col.cx=250; ListView_InsertColumn(g_gameList,1,&col);
-    col.pszText=(LPWSTR)colState.c_str(); col.cx=130; ListView_InsertColumn(g_gameList,2,&col);
-    g_gameExeBox = CreateWindowW(L"EDIT", NULL, WS_CHILD|WS_VISIBLE|WS_BORDER|ES_AUTOHSCROLL, 610, 412, 228, 26, hwnd, NULL, hi, NULL);
+    col.pszText=(LPWSTR)colGame.c_str(); col.cx=200; ListView_InsertColumn(g_gameList,0,&col);
+    col.pszText=(LPWSTR)colProc.c_str(); col.cx=260; ListView_InsertColumn(g_gameList,1,&col);
+    col.pszText=(LPWSTR)colState.c_str(); col.cx=140; ListView_InsertColumn(g_gameList,2,&col);
+
+    g_gameExeBox = CreateWindowW(L"EDIT", NULL, WS_CHILD|WS_VISIBLE|WS_BORDER|ES_AUTOHSCROLL, 670, 440, 248, 26, hwnd, NULL, hi, NULL);
     SendMessageW(g_gameExeBox, WM_SETFONT, (WPARAM)g_fontNormal, TRUE);
-    SetWindowTextW(g_gameExeBox, U8(L().exeHint).c_str());
-    MakeButton(hwnd, 610, 444, 110, 30, U8(L().gameAdd).c_str(), ID_ADD_GAME);
-    MakeButton(hwnd, 728, 444, 110, 30, U8(L().delBind).c_str(), ID_DEL_GAME);
-    MakeButton(hwnd, 610, 480, 228, 30, U8(L().gameRefresh).c_str(), ID_REFRESH_GAME);
-    g_chkAllGames = MakeCheck(hwnd, 610, 514, 228, 22, U8(L().allGames).c_str(), ID_CHK_ALLGAMES);
-    MakeLabel(hwnd, 32, 546, 560, 20, U8(L().gameNote).c_str(), g_fontSmall);
-    // 하단
-    g_memLabel = MakeLabel(hwnd, 20, 596, 820, 20, U8("").c_str(), g_fontSmall);
-    g_chkStartup = MakeCheck(hwnd, 20, 620, 170, 22, U8(L().startup).c_str(), ID_CHK_STARTUP);
-    g_chkTray = MakeCheck(hwnd, 200, 620, 190, 22, U8(L().trayMin).c_str(), ID_CHK_TRAY);
-    g_langLabel = MakeLabel(hwnd, 400, 622, 60, 20, U8(L().langLabel).c_str(), g_fontNormal);
-    g_langCombo = CreateWindowW(L"COMBOBOX", NULL, WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST|WS_VSCROLL, 460, 618, 150, 200, hwnd, (HMENU)(INT_PTR)ID_LANG_COMBO, hi, NULL);
+    SendMessageW(g_gameExeBox, EM_SETCUEBANNER, TRUE, (LPARAM)U8(L().exeHint).c_str());
+    MakeButton(hwnd, 670, 472, 120, 28, U8(L().gameAdd).c_str(), ID_ADD_GAME);
+    MakeButton(hwnd, 798, 472, 120, 28, U8(L().delBind).c_str(), ID_DEL_GAME);
+    MakeButton(hwnd, 670, 506, 248, 28, U8(L().gameRefresh).c_str(), ID_REFRESH_GAME);
+    g_chkAllGames = MakeCheck(hwnd, 670, 542, 248, 22, U8(L().allGames).c_str(), ID_CHK_ALLGAMES);
+    // v1.2.0: 게임 개수 표시
+    wchar_t gameCountBuf[128];
+    swprintf(gameCountBuf, 128, (g_lang==0 ? L"총 %d개 게임 등록됨" : L"%d games registered"), (int)g_games.size());
+    MakeLabel(hwnd, 670, 570, 248, 20, gameCountBuf, g_fontSmall);
+    MakeLabel(hwnd, 32, 616, 620, 20, U8(L().gameNote).c_str(), g_fontSmall);
+
+    // ── 하단 ──
+    g_memLabel = MakeLabel(hwnd, 24, 644, 900, 20, U8("").c_str(), g_fontSmall);
+    g_chkStartup = MakeCheck(hwnd, 24, 668, 170, 22, U8(L().startup).c_str(), ID_CHK_STARTUP);
+    g_chkTray = MakeCheck(hwnd, 200, 668, 190, 22, U8(L().trayMin).c_str(), ID_CHK_TRAY);
+    g_langLabel = MakeLabel(hwnd, 400, 670, 60, 20, U8(L().langLabel).c_str(), g_fontNormal);
+    g_langCombo = CreateWindowW(L"COMBOBOX", NULL, WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST|WS_VSCROLL, 460, 666, 160, 200, hwnd, (HMENU)(INT_PTR)ID_LANG_COMBO, hi, NULL);
     SendMessageW(g_langCombo, WM_SETFONT, (WPARAM)g_fontNormal, TRUE);
     for(int i=0;i<LANG_COUNT;i++) SendMessageW(g_langCombo, CB_ADDSTRING, 0, (LPARAM)U8(LANG_NAMES[i]).c_str());
     SendMessageW(g_langCombo, CB_SETCURSEL, (WPARAM)g_lang, 0);
-    MakeButton(hwnd, 620, 612, 110, 32, U8(L().trayHide).c_str(), ID_TRAY_BTN);
-    MakeButton(hwnd, 738, 612, 110, 32, U8(L().exitBtn).c_str(), ID_EXIT_BTN);
-    g_logLabel = MakeLabel(hwnd, 20, 648, 828, 20, U8(L().logReady).c_str(), g_fontSmall);
+    MakeButton(hwnd, 680, 660, 120, 32, U8(L().trayHide).c_str(), ID_TRAY_BTN);
+    MakeButton(hwnd, 810, 660, 120, 32, U8(L().exitBtn).c_str(), ID_EXIT_BTN);
+    g_logLabel = MakeLabel(hwnd, 24, 698, 908, 20, U8(L().logReady).c_str(), g_fontSmall);
+
     // 그룹박스 폰트
     EnumChildWindows(hwnd, [](HWND h, LPARAM lp)->BOOL{
         wchar_t cls[32]; GetClassNameW(h, cls, 32);
@@ -670,8 +786,6 @@ static void UpdateModeButtons(){
 }
 
 // ---------- 언어 변경: 저장 후 재시작 (폰트까지 새 언어로) ----------
-// True exit: bypass the minimize-to-tray behaviour of WM_CLOSE.
-// Used by the in-app Exit button and the tray menu Exit item.
 static void ExitApp(){
     g_forceExit = true;
     if(g_hwnd) PostMessageW(g_hwnd, WM_CLOSE, 0, 0);
@@ -720,7 +834,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             DWORD total = (DWORD)(g_fadeMs<=0?1:g_fadeMs);
             float p = (float)(now - g_fadeStartMs)/(float)total;
             if(p>=1.0f){ p=1.0f; g_fadeActive=false; KillTimer(hwnd, TIMER_FADE); }
-            // 켤 때 0->1, 끌 때 1->0
             float prog = g_fadeTargetDuck ? p : (1.0f-p);
             g_fadeProgress = prog;
             ApplyVolumeForDuckState(prog);
@@ -747,16 +860,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         if(((LPNMHDR)lParam)->hwndFrom==g_gameList && ((LPNMHDR)lParam)->code==LVN_ITEMCHANGED){
             LPNMLISTVIEW pnm=(LPNMLISTVIEW)lParam;
             if(pnm->uChanged & LVIF_STATE){
+                // v1.2.0: lParam에서 원래 게임 인덱스를 꺼낸다
+                LVITEMW lvi={0}; lvi.mask=LVIF_PARAM; lvi.iItem=pnm->iItem;
+                ListView_GetItem(g_gameList, &lvi);
+                int gi = (int)lvi.lParam;
                 BOOL checked = ListView_GetCheckState(g_gameList, pnm->iItem);
-                if(pnm->iItem>=0 && pnm->iItem<(int)g_games.size()){
+                if(gi>=0 && gi<(int)g_games.size()){
                     bool nw = checked?true:false;
-                    if(g_games[pnm->iItem].enabled!=nw){ g_games[pnm->iItem].enabled=nw; SaveSettings(); }
+                    if(g_games[gi].enabled!=nw){ g_games[gi].enabled=nw; SaveSettings(); }
                 }
             }
         }
         return 0;
     case WM_COMMAND:{
         int id=LOWORD(wParam);
+        // v1.2.0: 게임 검색 필터
+        if(id==ID_GAME_SEARCH && HIWORD(wParam)==EN_CHANGE){
+            wchar_t buf[256]=L"";
+            GetWindowTextW(g_gameSearchBox, buf, 256);
+            g_gameFilter = buf;
+            // 필터 변경 시 목록 전체를 다시 그린다 (스크롤 보존 로직은 RefreshGameList 내부에서 처리)
+            ListView_DeleteAllItems(g_gameList);
+            RefreshGameList();
+            return 0;
+        }
         if(id==ID_LANG_COMBO && HIWORD(wParam)==CBN_SELCHANGE){
             int sel=(int)SendMessageW(g_langCombo, CB_GETCURSEL, 0, 0);
             if(sel>=0 && sel<LANG_COUNT && sel!=g_lang){
@@ -787,7 +914,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         } else if(id==ID_ADD_GAME){
             wchar_t buf[MAX_PATH]=L""; GetWindowTextW(g_gameExeBox, buf, MAX_PATH);
             std::wstring exe=buf;
-            // "예: cs2.exe" 같은 안내 문구면 무시
             if(exe==U8(L().exeHint) || exe.rfind(U8("예:"),0)==0 || exe.rfind(U8("e.g."),0)==0 || exe.rfind(U8("ex.:"),0)==0 || exe.rfind(U8("p. ej."),0)==0 || exe.rfind(U8("p. ex."),0)==0 || exe.rfind(U8("z. B."),0)==0 || exe.rfind(U8("напр."),0)==0 || exe.rfind(U8("örn."),0)==0 || exe.rfind(U8("vd:"),0)==0 || exe.rfind(U8("cth:"),0)==0 || exe.rfind(U8("例如:"),0)==0 || exe.rfind(U8("例如："),0)==0) exe=L"";
             while(!exe.empty()&&(exe.back()==L' '||exe.back()==L'\r'||exe.back()==L'\n')) exe.pop_back();
             while(!exe.empty()&&exe.front()==L' ') exe.erase(exe.begin());
@@ -802,7 +928,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
         } else if(id==ID_DEL_GAME){
             int sel=ListView_GetNextItem(g_gameList, -1, LVNI_SELECTED);
-            if(sel>=0 && sel<(int)g_games.size()){ g_games.erase(g_games.begin()+sel); SaveSettings(); RefreshGameList(); }
+            if(sel>=0){
+                // v1.2.0: 필터링 중이면 lParam에서 원래 인덱스를 꺼낸다
+                LVITEMW lvi={0}; lvi.mask=LVIF_PARAM; lvi.iItem=sel;
+                ListView_GetItem(g_gameList, &lvi);
+                int gi = (int)lvi.lParam;
+                if(gi>=0 && gi<(int)g_games.size()){ g_games.erase(g_games.begin()+gi); SaveSettings(); RefreshGameList(); }
+            }
         } else if(id==ID_REFRESH_GAME){
             RefreshGameList(); SetStatus(U8(L().msgRefreshed));
         } else if(id==ID_TRAY_BTN){
@@ -847,7 +979,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             ShowWindow(hwnd, SW_HIDE);
             return 0;
         }
-        // fallthrough to destroy
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
@@ -874,10 +1005,10 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nCmdShow){
     wc.hIcon=(HICON)LoadImageW(hInst, MAKEINTRESOURCEW(101), IMAGE_ICON, 32, 32, 0);
     if(!wc.hIcon) wc.hIcon=LoadIconW(NULL, IDI_APPLICATION);
     RegisterClassW(&wc);
-    // 화면 중앙, 880x700
+    // v1.2.0: 창 크기 확대 (960x760)
     int sw=GetSystemMetrics(SM_CXSCREEN), sh=GetSystemMetrics(SM_CYSCREEN);
-    int W=880, H=700;
-    HWND hwnd=CreateWindowW(L"GameDuckWindow", (g_lang==0?U8("GameDuck v1.1.0 — 게임 볼륨 즉시 낮추기"):U8("GameDuck v1.1.0 — Instant Game Volume Ducker")).c_str(),
+    int W=960, H=760;
+    HWND hwnd=CreateWindowW(L"GameDuckWindow", (g_lang==0?U8("GameDuck v1.2.0 — 게임 볼륨 즉시 낮추기"):U8("GameDuck v1.2.0 — Instant Game Volume Ducker")).c_str(),
         WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,
         (sw-W)/2, (sh-H)/2, W, H, NULL, NULL, hInst, NULL);
     if(!hwnd) return 1;
