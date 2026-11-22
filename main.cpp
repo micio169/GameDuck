@@ -1,4 +1,7 @@
-// GameDuck v1.2.0 - 게임 볼륨 즉시 낮추기
+// GameDuck v1.2.1 - 게임 볼륨 즉시 낮추기
+// v1.2.1 변경사항:
+//   - 디스코드 등 음성 채팅 앱이 덕킹되던 버그 수정 (IsTargetExe에서 절대 제외)
+//   - 게임 개수 표시가 추가/삭제 시 바로 반영되도록 수정 (v1.2.0 이후 추가 수정)
 // v1.2.0 변경사항:
 //   - UI 개선: 여백 정리, 창 크기 최적화 (960x760)
 //   - 게임 목록 스크롤 버그 수정 (RefreshGameList가 스크롤 위치를 보존)
@@ -7,6 +10,8 @@
 //   - v1.2.0 릴리스 전 수정: 프로세스명 오류 4건 정정
 //     (FIFA24.exe->FC24.exe, Hogwarts Legacy.exe->HogwartsLegacy.exe,
 //      TEKKEN 8.exe->Polaris-Win64-Shipping.exe, T6SP.exe->cod.exe)
+//   - 릴리스 전 수정: 게임 개수 표시가 추가/삭제 시 바로 안 바뀌던 문제 수정
+//     (RefreshGameList에서 개수 라벨을 함께 갱신)
 // 동작 원리: Windows Core Audio 세션 API로 게임 프로세스별 볼륨만 조절합니다.
 // 게임에 DLL을 주입하지 않고, 게임 메모리를 읽지 않으며, 시스템 전체 볼륨은 건드리지 않습니다.
 // 트리거 키/마우스 버튼은 전역 로우레벨 훅으로 "듣기만" 합니다. 입력을 가로채지 않으므로
@@ -109,6 +114,7 @@ static const LangStrings& L(){ return LANGS[g_lang]; }
 static HWND g_langCombo=NULL, g_langLabel=NULL, g_grp1=NULL, g_grp2=NULL, g_grp3=NULL, g_titleLabel=NULL, g_subLabel=NULL;
 // v1.2.0: 게임 검색 필터
 static HWND g_gameSearchBox=NULL;
+static HWND g_gameCountLabel=NULL;
 static std::wstring g_gameFilter;
 
 #define WM_APP_DUCK_ON  (WM_APP+1)
@@ -284,9 +290,24 @@ static std::wstring ExeNameFromPid(DWORD pid){
     }
     CloseHandle(h); return L"";
 }
+// v1.2.1: 절대 덕킹하지 않을 앱 (음성 채팅) — "목록 외 앱도 자동 덕킹"이 켜져 있어도,
+// 목록에 직접 추가해도 제외한다. 팀원 목소리는 그대로 두는 것이 GameDuck의 약속이다.
+static bool IsExcludedExe(const std::wstring& low){
+    static const wchar_t* kExcluded[] = {
+        L"discord.exe", L"discordcanary.exe", L"discordptb.exe",
+        L"ts3client_win64.exe", L"ts3client_win32.exe",
+        L"mumble.exe",
+        L"skype.exe",
+        L"zoom.exe",
+        L"teams.exe",
+    };
+    for(auto e : kExcluded) if(low==e) return true;
+    return false;
+}
 static bool IsTargetExe(const std::wstring& exe){
     if(exe.empty()) return false;
     std::wstring low = ToLower(exe);
+    if(IsExcludedExe(low)) return false; // v1.2.1: 디스코드 등 음성 채팅은 절대 덕킹하지 않음
     if(g_allGames){
         if(low==L"system sounds"||low==L"audiodg.exe") return false;
         return true;
@@ -527,6 +548,14 @@ static double CurrentMemoryMB(){
 }
 
 // ---------- v1.2.0: 게임 목록 갱신 (스크롤 위치 보존) ----------
+// 게임 개수 라벨: 등록된 전체 게임 수(g_games.size())를 표시한다.
+// RefreshGameList가 끝날 때마다 함께 갱신하므로 추가/삭제 직후 바로 반영된다.
+static void UpdateGameCountLabel(){
+    if(!g_gameCountLabel) return;
+    wchar_t buf[128];
+    swprintf(buf, 128, (g_lang==0 ? L"총 %d개 게임 등록됨" : L"%d games registered"), (int)g_games.size());
+    SetWindowTextW(g_gameCountLabel, buf);
+}
 static void RefreshGameList(){
     if(!g_gameList) return;
 
@@ -619,6 +648,7 @@ static void RefreshGameList(){
     }
 
     InvalidateRect(g_gameList, NULL, TRUE);
+    UpdateGameCountLabel();
 }
 
 static void RefreshBindingList(){
@@ -689,7 +719,7 @@ static void CreateUI(HWND hwnd){
     HINSTANCE hi = GetModuleHandleW(NULL);
 
     // ── 헤더 ──
-    g_titleLabel = MakeLabel(hwnd, 24, 14, 400, 30, U8("🦆 GameDuck v1.2.0").c_str(), g_fontTitle);
+    g_titleLabel = MakeLabel(hwnd, 24, 14, 400, 30, U8("🦆 GameDuck v1.2.1").c_str(), g_fontTitle);
     g_subLabel = MakeLabel(hwnd, 24, 46, 640, 20, U8(L().subtitle).c_str(), g_fontSmall);
     g_chkEnable = MakeCheck(hwnd, 680, 16, 200, 26, U8(L().enable).c_str(), ID_CHK_ENABLE);
     SendMessageW(g_chkEnable, WM_SETFONT, (WPARAM)g_fontBold, TRUE);
@@ -754,7 +784,7 @@ static void CreateUI(HWND hwnd){
     // v1.2.0: 게임 개수 표시
     wchar_t gameCountBuf[128];
     swprintf(gameCountBuf, 128, (g_lang==0 ? L"총 %d개 게임 등록됨" : L"%d games registered"), (int)g_games.size());
-    MakeLabel(hwnd, 670, 570, 248, 20, gameCountBuf, g_fontSmall);
+    g_gameCountLabel = MakeLabel(hwnd, 670, 570, 248, 20, gameCountBuf, g_fontSmall);
     MakeLabel(hwnd, 32, 616, 620, 20, U8(L().gameNote).c_str(), g_fontSmall);
 
     // ── 하단 ──
@@ -1008,7 +1038,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nCmdShow){
     // v1.2.0: 창 크기 확대 (960x760)
     int sw=GetSystemMetrics(SM_CXSCREEN), sh=GetSystemMetrics(SM_CYSCREEN);
     int W=960, H=760;
-    HWND hwnd=CreateWindowW(L"GameDuckWindow", (g_lang==0?U8("GameDuck v1.2.0 — 게임 볼륨 즉시 낮추기"):U8("GameDuck v1.2.0 — Instant Game Volume Ducker")).c_str(),
+    HWND hwnd=CreateWindowW(L"GameDuckWindow", (g_lang==0?U8("GameDuck v1.2.1 — 게임 볼륨 즉시 낮추기"):U8("GameDuck v1.2.1 — Instant Game Volume Ducker")).c_str(),
         WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,
         (sw-W)/2, (sh-H)/2, W, H, NULL, NULL, hInst, NULL);
     if(!hwnd) return 1;

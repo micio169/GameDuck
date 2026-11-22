@@ -9,9 +9,9 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://isocpp.org/)
 [![Native](https://img.shields.io/badge/Native-Win32%20%7C%20No%20.NET-111111?style=flat-square)](https://learn.microsoft.com/windows/win32/)
-[![Size](https://img.shields.io/badge/Size-989KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
+[![Size](https://img.shields.io/badge/Size-990KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.2.0-9E6BFF?style=flat-square)](https://github.com/micio169/GameDuck/releases/tag/v1.2.0)
+[![Version](https://img.shields.io/badge/Version-v1.2.1-9E6BFF?style=flat-square)](https://github.com/micio169/GameDuck/releases/tag/v1.2.1)
 [![Languages](https://img.shields.io/badge/Languages-16-blue?style=flat-square)](#-16개-언어-지원)
 [![Games](https://img.shields.io/badge/Games-36-orange?style=flat-square)](#4️⃣-게임-목록--여러-게임-동시-지원)
 
@@ -31,6 +31,15 @@
 | **🪶 가볍다** | 네이티브 C++ 단일 exe. 이벤트 방식 훅이라 안 누르면 CPU를 거의 안 씁니다. |
 | **🛡️ 안전하다** | 게임 주입 없음, 게임 메모리 읽기 없음. Windows 오디오 세션 API만 씁니다. |
 
+## 🆕 v1.2.1 패치
+
+### 🎧 디스코드가 더 이상 안 낮아져요
+
+"목록 외 앱도 자동 덕킹"을 켜면 디스코드까지 같이 낮아지던 버그를 고쳤습니다. 이제 **디스코드(정식/PTB/Canary), 팀스피크, Mumble, Skype, Zoom, Teams 같은 음성 채팅 앱은 절대 덕킹되지 않습니다.** 저 옵션을 켜도, 목록에 직접 추가해도 안 낮아져요. 팀원 목소리는 그대로 두는 게 GameDuck의 약속입니다.
+
+### 🔢 게임 개수 표시가 바로 반영돼요
+
+게임을 추가/삭제하면 "총 36개 게임 등록됨" 숫자가 바로 바뀝니다. (v1.2.0에서는 재시작해야 반영됐던 문제 수정)
 
 ## 🆕 v1.2.0 새 기능
 
@@ -145,7 +154,7 @@ UI 라벨, 버튼, 상태 메시지까지 전부 번역됩니다. 언어 선택�
 | Tekken 8 | `Polaris-Win64-Shipping.exe` | Minecraft (Java) | `javaw.exe` |
 | Dungeon & Fighter | `DNF.exe` | MapleStory | `MapleStory.exe` |
 
-exe명을 입력해 `[게임 추가]`로 어떤 게임이든 추가할 수 있습니다. `목록 외 앱도 자동 덕킹`을 켜면 목록에 없는 실행 중 앱 볼륨도 낮아집니다.
+exe명을 입력해 `[게임 추가]`로 어떤 게임이든 추가할 수 있습니다. `목록 외 앱도 자동 덕킹`을 켜면 목록에 없는 실행 중 앱 볼륨도 낮아집니다. 단, 디스코드 등 음성 채팅 앱은 이 옵션을 켜도 절대 낮아지지 않습니다.
 
 ### 5️⃣ 백그라운드
 
@@ -228,6 +237,6 @@ GameDuck도 우클릭 → **관리자 권한으로 실행**하세요. 관리자 
 
 **Made for gamers who need to hear their team. 🎧**
 
-MIT License · v1.2.0 (2026-11-21)
+MIT License · v1.2.1 (2026-11-22)
 
 </div>
