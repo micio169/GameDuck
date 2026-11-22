@@ -9,9 +9,9 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://isocpp.org/)
 [![Native](https://img.shields.io/badge/Native-Win32%20%7C%20No%20.NET-111111?style=flat-square)](https://learn.microsoft.com/windows/win32/)
-[![Size](https://img.shields.io/badge/Size-990KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
+[![Size](https://img.shields.io/badge/Size-991KB%20single%20exe-2EA043?style=flat-square)](https://github.com/micio169/GameDuck/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.2.1-9E6BFF?style=flat-square)](https://github.com/micio169/GameDuck/releases/tag/v1.2.1)
+[![Version](https://img.shields.io/badge/Version-v1.2.2-9E6BFF?style=flat-square)](https://github.com/micio169/GameDuck/releases/tag/v1.2.2)
 [![Languages](https://img.shields.io/badge/Languages-16-blue?style=flat-square)](#-16개-언어-지원)
 [![Games](https://img.shields.io/badge/Games-36-orange?style=flat-square)](#4️⃣-게임-목록--여러-게임-동시-지원)
 
@@ -30,6 +30,16 @@
 | **⌨️ 아무 키나** | 키보드 아무 키, 마우스 좌/우/휠/X1/X2 — 여러 개 등록하면 아무거나 눌러도 됩니다. |
 | **🪶 가볍다** | 네이티브 C++ 단일 exe. 이벤트 방식 훅이라 안 누르면 CPU를 거의 안 씁니다. |
 | **🛡️ 안전하다** | 게임 주입 없음, 게임 메모리 읽기 없음. Windows 오디오 세션 API만 씁니다. |
+
+## 🆕 v1.2.2 패치 — 핵심 버그 수정
+
+### ✅ 이제 체크한 게임만 낮아져요
+
+**지금까지는 체크한 게임만 낮아지는 게 아니라, 실행 중인 모든 앱의 볼륨이 함께 낮아졌습니다.** 목록 체크박스, "목록 외 앱도 자동 덕킹" 옵션, 디스코드 제외 설정이 전부 소용없었던 게 이 때문입니다.
+
+원인: 볼륨을 정하는 함수(`IsTargetExe`)가 코드에 정의만 되고 **아무 데서도 호출되지 않는 죽은 코드**였습니다. 실제 볼륨 조절 부분은 오디오 세션을 필터 없이 전부 처리했습니다. v1.2.1의 디스코드 제외도 같은 이유로 동작하지 않았습니다.
+
+수정: 오디오 세션을 하나씩 볼 때마다 `IsTargetExe`를 검사하도록 바꿨습니다. 이제 체크된 게임 세션만 낮아지고, 디스코드·브라우저·음악 앱은 그대로입니다. "목록 외 앱도 자동 덕킹"을 켜면 목록 밖 앱도 낮아지지만, 디스코드 등 음성 채팅 앱은 그때도 제외됩니다.
 
 ## 🆕 v1.2.1 패치
 
@@ -237,6 +247,6 @@ GameDuck도 우클릭 → **관리자 권한으로 실행**하세요. 관리자 
 
 **Made for gamers who need to hear their team. 🎧**
 
-MIT License · v1.2.1 (2026-11-22)
+MIT License · v1.2.2 (2026-11-22)
 
 </div>

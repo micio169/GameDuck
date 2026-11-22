@@ -1,4 +1,10 @@
-// GameDuck v1.2.1 - 게임 볼륨 즉시 낮추기
+// GameDuck v1.2.2 - 게임 볼륨 즉시 낮추기
+// v1.2.2 변경사항 (핵심 버그 수정):
+//   - 체크한 게임만 덕킹되지 않고 모든 앱이 함께 낮아지던 버그 수정.
+//     원인: IsTargetExe(목록 체크/전체 덕킹 옵션/디스코드 제외)가 정의만 되고
+//     아무 데서도 호출되지 않는 죽은 코드였다. ForEachTargetSession이 모든
+//     오디오 세션을 필터 없이 그대로 처리했다. 이제 세션마다 IsTargetExe를
+//     검사해 대상 게임 세션만 낮추고 복원한다.
 // v1.2.1 변경사항:
 //   - 디스코드 등 음성 채팅 앱이 덕킹되던 버그 수정 (IsTargetExe에서 절대 제외)
 //   - 게임 개수 표시가 추가/삭제 시 바로 반영되도록 수정 (v1.2.0 이후 추가 수정)
@@ -339,10 +345,16 @@ static void ForEachTargetSession(F&& fn){
             if(SUCCEEDED(pCtl->QueryInterface(__uuidof(IAudioSessionControl2),(void**)&pCtl2))&&pCtl2){
                 DWORD pid=0; pCtl2->GetProcessId(&pid);
                 std::wstring exe = (pid!=0) ? ExeNameFromPid(pid) : L"";
-                ISimpleAudioVolume* pVol=NULL;
-                if(SUCCEEDED(pCtl->QueryInterface(__uuidof(ISimpleAudioVolume),(void**)&pVol))&&pVol){
-                    fn(pid, exe, pVol);
-                    pVol->Release();
+                // v1.2.2 핵심 수정: 대상 게임 세션만 처리한다.
+                // 이전에는 이 필터가 없어서 체크한 게임이든 아니든, 디스코드든 브라우저든
+                // 실행 중인 모든 앱의 볼륨이 함께 낮아졌다. IsTargetExe가 정의만 되고
+                // 아무 데서도 호출되지 않는 죽은 코드였던 것이 원인이다.
+                if(IsTargetExe(exe)){
+                    ISimpleAudioVolume* pVol=NULL;
+                    if(SUCCEEDED(pCtl->QueryInterface(__uuidof(ISimpleAudioVolume),(void**)&pVol))&&pVol){
+                        fn(pid, exe, pVol);
+                        pVol->Release();
+                    }
                 }
                 pCtl2->Release();
             }
@@ -719,7 +731,7 @@ static void CreateUI(HWND hwnd){
     HINSTANCE hi = GetModuleHandleW(NULL);
 
     // ── 헤더 ──
-    g_titleLabel = MakeLabel(hwnd, 24, 14, 400, 30, U8("🦆 GameDuck v1.2.1").c_str(), g_fontTitle);
+    g_titleLabel = MakeLabel(hwnd, 24, 14, 400, 30, U8("🦆 GameDuck v1.2.2").c_str(), g_fontTitle);
     g_subLabel = MakeLabel(hwnd, 24, 46, 640, 20, U8(L().subtitle).c_str(), g_fontSmall);
     g_chkEnable = MakeCheck(hwnd, 680, 16, 200, 26, U8(L().enable).c_str(), ID_CHK_ENABLE);
     SendMessageW(g_chkEnable, WM_SETFONT, (WPARAM)g_fontBold, TRUE);
@@ -1038,7 +1050,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nCmdShow){
     // v1.2.0: 창 크기 확대 (960x760)
     int sw=GetSystemMetrics(SM_CXSCREEN), sh=GetSystemMetrics(SM_CYSCREEN);
     int W=960, H=760;
-    HWND hwnd=CreateWindowW(L"GameDuckWindow", (g_lang==0?U8("GameDuck v1.2.1 — 게임 볼륨 즉시 낮추기"):U8("GameDuck v1.2.1 — Instant Game Volume Ducker")).c_str(),
+    HWND hwnd=CreateWindowW(L"GameDuckWindow", (g_lang==0?U8("GameDuck v1.2.2 — 게임 볼륨 즉시 낮추기"):U8("GameDuck v1.2.2 — Instant Game Volume Ducker")).c_str(),
         WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,
         (sw-W)/2, (sh-H)/2, W, H, NULL, NULL, hInst, NULL);
     if(!hwnd) return 1;
